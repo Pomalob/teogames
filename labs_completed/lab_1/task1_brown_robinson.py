@@ -1,14 +1,13 @@
+# -*- coding: utf-8 -*-
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from scipy.optimize import linprog
-
-np.random.seed(42)
-
-N_ROWS, N_COLS = 12, 12
-A = np.random.randint(-100, 101, size=(N_ROWS, N_COLS))
-
-print("Платёжная матрица A (12x12):")
-print(A)
 
 
 def brown_robinson(A, num_iterations=5000):
@@ -84,34 +83,44 @@ def solve_game_lp(A):
     return p_lp, q_lp, v_lp
 
 
-NUM_ITER = 5000
-p_br, q_br, v_br, lower_prices, upper_prices = brown_robinson(A, NUM_ITER)
-p_lp, q_lp, v_lp = solve_game_lp(A)
+if __name__ == "__main__":
+    np.random.seed(42)
 
-print(f"\n=== Метод Брауна-Робинсона ({NUM_ITER} итераций) ===")
-print(f"Нижняя цена: {lower_prices[-1]:.4f}")
-print(f"Верхняя цена: {upper_prices[-1]:.4f}")
-print(f"Цена игры (BR): {v_br:.4f}")
-print(f"Стратегия игрока 1: {np.round(p_br, 4)}")
-print(f"Стратегия игрока 2: {np.round(q_br, 4)}")
+    N_ROWS, N_COLS = 12, 12
+    A = np.random.randint(-100, 101, size=(N_ROWS, N_COLS))
 
-print(f"\n=== Линейное программирование ===")
-print(f"Цена игры (LP): {v_lp:.4f}")
-print(f"Стратегия игрока 1: {np.round(p_lp, 4)}")
-print(f"Стратегия игрока 2: {np.round(q_lp, 4)}")
-print(f"\nРазница |BR - LP|: {abs(v_br - v_lp):.4f}")
+    print("Платёжная матрица A (12x12):")
+    print(A)
 
-iterations = np.arange(1, NUM_ITER + 1)
-plt.figure(figsize=(12, 6))
-plt.plot(iterations, lower_prices, label='Нижняя цена игры', color='blue', alpha=0.7)
-plt.plot(iterations, upper_prices, label='Верхняя цена игры', color='red', alpha=0.7)
-plt.axhline(y=v_lp, color='green', linestyle='--', linewidth=2,
-            label=f'Цена игры (LP) = {v_lp:.2f}')
-plt.xlabel('Номер итерации')
-plt.ylabel('Цена игры')
-plt.title('Сходимость метода Брауна-Робинсона')
-plt.legend()
-plt.grid(True, alpha=0.3)
-plt.tight_layout()
-plt.savefig('task1_convergence.png', dpi=150)
-plt.show()
+    NUM_ITER = 5000
+    p_br, q_br, v_br, lower_prices, upper_prices = brown_robinson(A, NUM_ITER)
+    p_lp, q_lp, v_lp = solve_game_lp(A)
+
+    print(f"\n=== Метод Брауна-Робинсона ({NUM_ITER} итераций) ===")
+    print(f"Нижняя цена: {lower_prices[-1]:.4f}")
+    print(f"Верхняя цена: {upper_prices[-1]:.4f}")
+    print(f"Цена игры (BR): {v_br:.4f}")
+    print(f"Стратегия игрока 1: {np.round(p_br, 4)}")
+    print(f"Стратегия игрока 2: {np.round(q_br, 4)}")
+
+    print(f"\n=== Линейное программирование ===")
+    print(f"Цена игры (LP): {v_lp:.4f}")
+    print(f"Стратегия игрока 1: {np.round(p_lp, 4)}")
+    print(f"Стратегия игрока 2: {np.round(q_lp, 4)}")
+    print(f"\nРазница |BR - LP|: {abs(v_br - v_lp):.4f}")
+
+    iterations = np.arange(1, NUM_ITER + 1)
+    plt.figure(figsize=(12, 6))
+    plt.plot(iterations, lower_prices, label='Нижняя цена игры', color='blue', alpha=0.7)
+    plt.plot(iterations, upper_prices, label='Верхняя цена игры', color='red', alpha=0.7)
+    plt.axhline(y=v_lp, color='green', linestyle='--', linewidth=2,
+                label=f'Цена игры (LP) = {v_lp:.2f}')
+    plt.xlabel('Номер итерации')
+    plt.ylabel('Цена игры')
+    plt.title('Сходимость метода Брауна-Робинсона')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.savefig('task1_convergence.png', dpi=150)
+    plt.close()
+    print("\n[График сохранён: task1_convergence.png]")

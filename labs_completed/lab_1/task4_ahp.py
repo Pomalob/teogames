@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*-
+import sys
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+
 import numpy as np
 
 RI = {1: 0.00, 2: 0.00, 3: 0.58, 4: 0.90, 5: 1.12,

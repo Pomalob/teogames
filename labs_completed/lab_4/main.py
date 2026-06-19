@@ -19,10 +19,13 @@ import numpy as np
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
+from rich.text import Text
 
 from core.queue_math import system_metrics, mean_response_time, equal_shares
 from core.lp_optimizer import lp_balance, lp_response_proxy, nlp_true_response
 from core.simulation import simulate_system
+from core.plots import save_all_plots
 
 console = Console()
 
@@ -32,8 +35,8 @@ def load_config(path: str = "config.yaml") -> dict:
         return yaml.safe_load(f)
 
 
-def run_analysis(cfg: dict, run_sim: bool = False) -> None:
-    lambda_total = cfg["lambda_total"]
+def run_analysis(cfg: dict, run_sim: bool = False, lambda_override: float = None) -> None:
+    lambda_total = lambda_override if lambda_override is not None else cfg["lambda_total"]
     mu_list = [s["mu"] for s in cfg["servers"]]
     rho_max = cfg.get("rho_max", 0.90)
     sim_duration = cfg.get("simulation_duration", 3000.0)
@@ -58,24 +61,35 @@ def run_analysis(cfg: dict, run_sim: bool = False) -> None:
     tbl.add_column("Метод", style="bold")
     for i, mu in enumerate(mu_list):
         tbl.add_column(f"x_{i} (μ={mu:.0f})", justify="right")
-    tbl.add_column("W_avg, мс", justify="right", style="green")
+    tbl.add_column("W_avg, мс", justify="right")
     tbl.add_column("Статус", justify="center")
 
+    # Pre-compute W for all methods to find the best
+    method_w_ms: dict[str, float] = {}
     for name, res in results.items():
         mets = system_metrics(lambda_total, mu_list, res.shares)
-        w_ms = mean_response_time(mets, res.shares) * 1000.0
+        method_w_ms[name] = mean_response_time(mets, res.shares) * 1000.0
+
+    eq_w_ms = eq_w * 1000.0
+    best_method = min(method_w_ms, key=lambda k: method_w_ms[k])
+
+    for name, res in results.items():
+        w_ms = method_w_ms[name]
+        is_best = (name == best_method)
+        w_label = f"★ {w_ms:.3f}" if is_best else f"{w_ms:.3f}"
         cells = [f"{x:.4f}" for x in res.shares]
-        cells.append(f"{w_ms:.3f}")
+        cells.append(w_label)
         cells.append(res.solver_status)
-        tbl.add_row(name, *cells)
+        row_style = "bold green" if is_best else ""
+        tbl.add_row(name, *cells, style=row_style)
 
     # equal baseline
-    eq_w_ms = eq_w * 1000.0
     tbl.add_row(
         "[dim]Равные доли (baseline)[/dim]",
         *[f"{x:.4f}" for x in eq_shares],
         f"[dim]{eq_w_ms:.3f}[/dim]",
         "[dim]—[/dim]",
+        style="dim",
     )
     console.print(tbl)
 
@@ -92,10 +106,17 @@ def run_analysis(cfg: dict, run_sim: bool = False) -> None:
     tbl2.add_column("Устойчива", justify="center")
 
     for m in best_mets:
+        rho_val = m.rho
+        if rho_val > 0.8:
+            rho_cell = f"[red]{rho_val:.4f}[/red]"
+        elif rho_val > 0.6:
+            rho_cell = f"[yellow]{rho_val:.4f}[/yellow]"
+        else:
+            rho_cell = f"[green]{rho_val:.4f}[/green]"
         tbl2.add_row(
             str(m.server_id),
             f"{m.lambda_i:.2f}",
-            f"{m.rho:.4f}",
+            rho_cell,
             f"{m.w * 1000:.3f}" if m.stable else "∞",
             f"{m.l_q:.4f}" if m.stable else "∞",
             "✓" if m.stable else "✗",
@@ -128,11 +149,22 @@ def run_analysis(cfg: dict, run_sim: bool = False) -> None:
     # Recalculate properly
     best_mets_check = system_metrics(lambda_total, mu_list, best_res.shares)
     best_w_ms = mean_response_time(best_mets_check, best_res.shares) * 1000.0
-    improvement = (eq_w_ms - best_w_ms) / eq_w_ms * 100.0
-    console.print(
-        f"\n[bold green]Оптимальное W = {best_w_ms:.3f} мс[/bold green] "
-        f"(улучшение vs равномерного: {improvement:.1f}%)\n"
-    )
+    import math as _math
+    improvement = (eq_w_ms - best_w_ms) / eq_w_ms * 100.0 if (eq_w_ms > 0 and not _math.isinf(eq_w_ms)) else None
+
+    # --- Save plots ---
+    plots_dir = Path(__file__).parent / 'plots'
+    save_all_plots(lambda_total, mu_list, results, eq_shares, eq_mets, plots_dir, rho_max)
+
+    summary = Text()
+    summary.append("Лучший метод: NLP true W\n", style="bold green")
+    summary.append(f"W_avg = {best_w_ms:.3f} мс  ", style="bold")
+    if improvement is not None:
+        summary.append(f"(−{improvement:.1f}% vs равномерного)", style="green")
+    else:
+        summary.append("(baseline нестабилен при данном λ)", style="yellow")
+    summary.append(f"\nГрафики: {plots_dir}", style="dim")
+    console.print(Panel(summary, title="Результат", border_style="green"))
 
 
 def main():
@@ -140,6 +172,8 @@ def main():
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--serve", action="store_true", help="Start FastAPI server")
     parser.add_argument("--sim", action="store_true", help="Run SimPy validation")
+    parser.add_argument("--lambda-total", type=float, default=None,
+                        help="Override lambda_total from config")
     args = parser.parse_args()
 
     config_path = Path(__file__).parent / args.config
@@ -153,7 +187,7 @@ def main():
         import uvicorn
         uvicorn.run("api.app:app", host="0.0.0.0", port=8000, reload=False)
     else:
-        run_analysis(cfg, run_sim=args.sim)
+        run_analysis(cfg, run_sim=args.sim, lambda_override=args.lambda_total)
 
 
 if __name__ == "__main__":

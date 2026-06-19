@@ -111,3 +111,31 @@ def test_equal_shares():
     assert len(sh) == 4
     assert abs(sum(sh) - 1.0) < 1e-9
     assert all(abs(s - 0.25) < 1e-9 for s in sh)
+
+
+# ---- parametrized: mm1_metrics ----
+
+@pytest.mark.parametrize("lam,mu,expected_rho,expected_w", [
+    (5.0,  10.0, 0.5,   0.2),
+    (9.0,  10.0, 0.9,   1.0),
+    (1.0, 100.0, 0.01,  1/99),
+    (50.0, 80.0, 0.625, 1/30),
+])
+def test_mm1_parametrized(lam, mu, expected_rho, expected_w):
+    m = mm1_metrics(lam, mu)
+    assert m.stable is True
+    assert abs(m.rho - expected_rho) < 1e-6
+    assert abs(m.w - expected_w) < 1e-6
+
+
+# ---- parametrized: mean_response_time ----
+
+@pytest.mark.parametrize("lam,mu_list,shares,expected_w", [
+    (100.0, [200.0, 200.0], [0.5, 0.5], 1.0 / 150.0),
+    (60.0,  [100.0, 100.0], [0.5, 0.5], 1.0 / 70.0),
+    (40.0,  [100.0, 60.0],  [0.6, 0.4], 0.6 / 76.0 + 0.4 / 44.0),
+])
+def test_mean_response_time_parametrized(lam, mu_list, shares, expected_w):
+    mets = system_metrics(lam, mu_list, shares)
+    w_avg = mean_response_time(mets, shares)
+    assert abs(w_avg - expected_w) < 1e-9

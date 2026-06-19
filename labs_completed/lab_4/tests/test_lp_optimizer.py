@@ -104,3 +104,53 @@ def test_nlp_true_better_than_equal():
     w_eq = mean_response_time(eq_mets, eq)
 
     assert w_opt <= w_eq + 1e-6
+
+
+# ---- parametrized: lp_balance on 5 scenarios ----
+
+@pytest.mark.parametrize("lam,mu_list,rho_max", [
+    (50,  [100.0, 80.0],              0.90),
+    (150, [100.0, 80.0, 60.0],        0.90),
+    (200, [200.0, 150.0, 100.0],      0.85),
+    (30,  [50.0, 50.0, 50.0, 50.0],   0.90),
+    (80,  [100.0, 100.0],             0.95),
+])
+def test_lp_balance_parametrized(lam, mu_list, rho_max):
+    res = lp_balance(lam, mu_list, rho_max)
+    assert res.solver_status == "Optimal"
+    assert abs(sum(res.shares) - 1.0) < 1e-3
+    rhos = [lam * x / mu for x, mu in zip(res.shares, mu_list)]
+    assert all(r <= rho_max + 1e-4 for r in rhos)
+
+
+# ---- parametrized: nlp_true_response on 5 scenarios ----
+
+@pytest.mark.parametrize("lam,mu_list,rho_max", [
+    (50,  [100.0, 80.0],              0.90),
+    (150, [100.0, 80.0, 60.0],        0.90),
+    (200, [200.0, 150.0, 100.0],      0.85),
+    (30,  [50.0, 50.0, 50.0, 50.0],   0.90),
+    (80,  [100.0, 100.0],             0.95),
+])
+def test_nlp_true_response_parametrized(lam, mu_list, rho_max):
+    from core.queue_math import system_metrics, mean_response_time, equal_shares
+    res = nlp_true_response(lam, mu_list, rho_max)
+    assert abs(sum(res.shares) - 1.0) < 1e-3
+
+    opt_mets = system_metrics(lam, mu_list, res.shares)
+    w_nlp = mean_response_time(opt_mets, res.shares)
+
+    eq = equal_shares(len(mu_list))
+    eq_mets = system_metrics(lam, mu_list, eq)
+    w_eq = mean_response_time(eq_mets, eq)
+
+    assert w_nlp <= w_eq + 1e-6
+
+
+# ---- fixture-based: all_formulations_feasible ----
+
+def test_all_formulations_feasible(scenario):
+    # все три формулировки находят решение на любом сценарии
+    for fn in [lp_balance, lp_response_proxy, nlp_true_response]:
+        res = fn(scenario["lambda_total"], scenario["mu_list"], scenario["rho_max"])
+        assert abs(sum(res.shares) - 1.0) < 1e-3
